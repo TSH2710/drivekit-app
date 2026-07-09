@@ -88,6 +88,38 @@ import { join } from 'path'
 
 const app = new Hono()
 
+// ── Seed Admin Account ───────────────────────────────────────
+const ADMIN_EMAIL = 'owner@drivekit.com'
+const ADMIN_PASSWORD = 'Drivekit 2024'
+
+async function seedAdminAccount() {
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } })
+    if (existing) {
+      if (existing.role !== 'OWNER') {
+        await prisma.user.update({ where: { email: ADMIN_EMAIL }, data: { role: 'OWNER' } })
+        console.log('[admin] Promoted existing user to OWNER')
+      }
+      return
+    }
+    await prisma.user.create({
+      data: {
+        email: ADMIN_EMAIL,
+        passwordHash: hashPassword(ADMIN_PASSWORD),
+        name: 'Owner',
+        role: 'OWNER',
+        emailVerified: true,
+        emailOptIn: false,
+      },
+    })
+    console.log('[admin] Admin account seeded: Owner@drivekit.com')
+  } catch (err: any) {
+    console.error('[admin] Seed failed:', err.message)
+  }
+}
+
+seedAdminAccount()
+
 interface ShopifyProduct {
   id: number
   title: string
