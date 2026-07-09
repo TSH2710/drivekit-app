@@ -629,7 +629,7 @@ function parseToolResponse(result: { ok: boolean; data?: unknown; error?: string
 
 app.get('/shopify/sync', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -980,10 +980,35 @@ function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex')
 }
 
+// ── Stateless Token System ────────────────────────────────────
+// Tokens encode userId + HMAC signature so they survive server restarts.
+// Format: base64url(userId).hex(hmac-sha256(userId, secret))
+
+const TOKEN_SECRET = process.env.TOKEN_SECRET || 'drivekit-session-secret-2026'
+
+function signToken(userId: string): string {
+  const payload = Buffer.from(userId).toString('base64url')
+  const sig = createHash('sha256').update(`${payload}:${TOKEN_SECRET}`).digest('hex').slice(0, 32)
+  return `${payload}.${sig}`
+}
+
+function verifyToken(token: string): string | null {
+  const sepIdx = token.lastIndexOf('.')
+  if (sepIdx < 0) return null
+  const payload = token.slice(0, sepIdx)
+  const sig = token.slice(sepIdx + 1)
+  const expected = createHash('sha256').update(`${payload}:${TOKEN_SECRET}`).digest('hex').slice(0, 32)
+  if (sig !== expected) return null
+  try {
+    return Buffer.from(payload, 'base64url').toString()
+  } catch { return null }
+}
+
 function generateToken(): string {
   return randomBytes(32).toString('hex')
 }
 
+// In-memory session cache for fast repeated lookups (not required for auth, just perf)
 const sessions = new Map<string, { userId: string; email: string; role: string; createdAt: number }>()
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
@@ -1037,7 +1062,7 @@ app.post('/auth/signup', async (c) => {
   }
 
   cleanExpiredSessions()
-  const token = generateToken()
+  const token = signToken(user.id)
   sessions.set(token, { userId: user.id, email: user.email, role: user.role, createdAt: Date.now() })
 
   // Send verification email (always, regardless of opt-in)
@@ -1170,7 +1195,7 @@ app.post('/auth/confirm-signup', async (c) => {
   pendingSignups.delete(email)
 
   cleanExpiredSessions()
-  const token = generateToken()
+  const token = signToken(user.id)
   sessions.set(token, { userId: user.id, email: user.email, role: user.role, createdAt: Date.now() })
 
   // Send verification link email
@@ -1228,7 +1253,7 @@ app.post('/auth/signin', async (c) => {
   }
 
   cleanExpiredSessions()
-  const token = generateToken()
+  const token = signToken(user.id)
   sessions.set(token, { userId: user.id, email: user.email, role: user.role, createdAt: Date.now() })
 
   return c.json({
@@ -1275,26 +1300,43 @@ app.post('/auth/signout', async (c) => {
   return c.json({ ok: true })
 })
 
-function getSessionUser(c: any): { userId: string; email: string; role: string } | null {
+async function getSessionUser(c: any): Promise<{ userId: string; email: string; role: string } | null> {
   const authHeader = c.req.header('Authorization')
   const token = authHeader?.replace('Bearer ', '')
   if (!token) return null
-  const session = sessions.get(token)
-  if (!session) return null
-  if (Date.now() - session.createdAt > SESSION_MAX_AGE_MS) { sessions.delete(token); return null }
-  return session
+
+  // Fast path: in-memory session cache
+  const cached = sessions.get(token)
+  if (cached && Date.now() - cached.createdAt < SESSION_MAX_AGE_MS) {
+    return cached
+  }
+
+  // Stateless fallback: verify HMAC token and look up user from DB
+  const userId = verifyToken(token)
+  if (userId) {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } })
+      if (user) {
+        const session = { userId: user.id, email: user.email, role: user.role, createdAt: Date.now() }
+        sessions.set(token, session)
+        return session
+      }
+    } catch {}
+  }
+
+  return null
 }
 
-function requireAuth(c: any): { userId: string; email: string; role: string } {
-  const user = getSessionUser(c)
+async function requireAuth(c: any): Promise<{ userId: string; email: string; role: string }> {
+  const user = await getSessionUser(c)
   if (!user) {
     throw { status: 401, message: 'Not authenticated' }
   }
   return user
 }
 
-function requireAdmin(c: any): { userId: string; email: string; role: string } {
-  const user = requireAuth(c)
+async function requireAdmin(c: any): Promise<{ userId: string; email: string; role: string }> {
+  const user = await requireAuth(c)
   if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
     throw { status: 403, message: 'Forbidden' }
   }
@@ -1310,7 +1352,7 @@ function generateOrderNumber(): string {
 
 app.get('/admin/stats', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1336,7 +1378,7 @@ app.get('/admin/stats', async (c) => {
 
 app.get('/admin/users', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1350,7 +1392,7 @@ app.get('/admin/users', async (c) => {
 
 app.patch('/admin/users/:id/role', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1366,7 +1408,7 @@ app.patch('/admin/users/:id/role', async (c) => {
 
 app.delete('/admin/orders/:id', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1383,7 +1425,7 @@ app.delete('/admin/orders/:id', async (c) => {
 
 app.delete('/admin/orders/fake', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1404,7 +1446,7 @@ app.delete('/admin/orders/fake', async (c) => {
 
 app.patch('/admin/orders/:id/status', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1420,7 +1462,7 @@ app.patch('/admin/orders/:id/status', async (c) => {
 
 app.get('/admin/orders', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1512,7 +1554,7 @@ app.post('/webhooks/shopify/orders', async (c) => {
 
 app.get('/shopify/orders', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1578,7 +1620,7 @@ app.get('/shopify/orders', async (c) => {
 
 app.post('/shopify/orders/import', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1681,7 +1723,7 @@ app.post('/shopify/orders/import', async (c) => {
 
 app.post('/admin/orders/:id/fulfill', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1742,7 +1784,7 @@ app.post('/admin/orders/:id/fulfill', async (c) => {
 
 app.post('/shopify/webhooks/register', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1787,7 +1829,7 @@ app.post('/shopify/webhooks/register', async (c) => {
 
 app.get('/shopify/webhooks/list', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -1812,7 +1854,7 @@ app.get('/shopify/webhooks/list', async (c) => {
 
 app.post('/orders/:id/notify', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: String(e) }, 500)
@@ -1942,7 +1984,7 @@ app.get('/track-order', async (c) => {
 // ── Orders ────────────────────────────────────────────────────
 
 app.post('/orders/place', async (c) => {
-  const sessionUser = getSessionUser(c)
+  const sessionUser = await getSessionUser(c)
   const body = await c.req.json<{
     email?: string
     items?: Array<{ productId: string; variantId?: string; title: string; variantTitle?: string; quantity: number; price: number }>
@@ -2000,7 +2042,7 @@ app.post('/orders/place', async (c) => {
 })
 
 app.get('/my-orders', async (c) => {
-  const sessionUser = getSessionUser(c)
+  const sessionUser = await getSessionUser(c)
   if (!sessionUser) return c.json({ orders: [] })
 
   const orders = await prisma.order.findMany({
@@ -2013,7 +2055,7 @@ app.get('/my-orders', async (c) => {
 
 app.get('/order/:orderNumber', async (c) => {
   const orderNumber = c.req.param('orderNumber')
-  const sessionUser = getSessionUser(c)
+  const sessionUser = await getSessionUser(c)
 
   const order = await prisma.order.findUnique({
     where: { orderNumber },
@@ -2061,7 +2103,7 @@ app.post('/reviews/product/:productId', async (c) => {
   }
 
   let userId: string | null = null
-  const sessionUser = getSessionUser(c)
+  const sessionUser = await getSessionUser(c)
   if (sessionUser) userId = sessionUser.userId
 
   const review = await prisma.review.create({
@@ -2098,7 +2140,7 @@ app.post('/reviews/product/:productId', async (c) => {
 
 app.get('/admin/products', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2149,7 +2191,7 @@ app.get('/admin/products', async (c) => {
 
 app.put('/admin/products/:id', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2188,7 +2230,7 @@ app.put('/admin/products/:id', async (c) => {
 
 app.delete('/admin/products/:id', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2232,7 +2274,7 @@ app.get('/site-content', async (c) => {
 
 app.put('/site-content', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2541,7 +2583,7 @@ app.post('/newsletter/subscribe', async (c) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) return c.json({ error: 'Invalid email address' }, 400)
 
-  const sessionUser = getSessionUser(c)
+  const sessionUser = await getSessionUser(c)
 
   try {
     const existing = await prisma.newsletterSubscriber.findUnique({ where: { email } })
@@ -2625,7 +2667,7 @@ app.get('/newsletter/unsubscribe', async (c) => {
 
 app.get('/newsletter/stats', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2645,7 +2687,7 @@ app.get('/newsletter/stats', async (c) => {
 
 app.post('/admin/email/broadcast', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2691,7 +2733,7 @@ app.post('/admin/email/broadcast', async (c) => {
 
 app.get('/admin/email/logs', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2705,7 +2747,7 @@ app.get('/admin/email/logs', async (c) => {
 
 app.get('/admin/email/smtp-status', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2798,7 +2840,7 @@ app.get('/auth/verify-email', async (c) => {
 
 app.get('/admin/email/subscribers', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2841,7 +2883,7 @@ app.get('/admin/email/subscribers', async (c) => {
 
 app.delete('/admin/email/subscribers/:id', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2856,7 +2898,7 @@ app.delete('/admin/email/subscribers/:id', async (c) => {
 
 app.post('/admin/email/test', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2885,7 +2927,7 @@ app.post('/admin/email/test', async (c) => {
 
 app.get('/admin/known-products', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2896,7 +2938,7 @@ app.get('/admin/known-products', async (c) => {
 
 app.post('/admin/known-products/mark-all', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)
@@ -2919,7 +2961,7 @@ app.post('/admin/known-products/mark-all', async (c) => {
 
 app.post('/admin/known-products/reset', async (c) => {
   try {
-    requireAdmin(c)
+    await requireAdmin(c)
   } catch (e: any) {
     if (e?.status) return c.json({ error: e.message }, e.status)
     return c.json({ error: e.message ?? String(e) }, 500)

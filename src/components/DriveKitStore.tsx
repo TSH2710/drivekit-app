@@ -1537,6 +1537,10 @@ export default function DriveKitStore() {
     window.scrollTo(0, 0)
   }, [selectedProduct?.id])
 
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [currentView])
+
   if (selectedProduct) {
     return <>
       <ProductDetail product={selectedProduct} onBack={() => setSelectedProduct(null)} addToCart={addToCart} onCheckout={() => { setSelectedProduct(null); setCurrentView('checkout') }} waitlistSubmitted={waitlistSubmitted} waitlistEmail={waitlistEmail} setWaitlistEmail={setWaitlistEmail} waitlistError={waitlistError} setWaitlistError={setWaitlistError} waitlistLoading={waitlistLoading} waitlistCounts={waitlistCounts} joinWaitlist={joinWaitlist} isWishlisted={wishlistedIds.has(selectedProduct.id)} onToggleWishlist={toggleWishlist} allProducts={products} onViewProduct={(p) => setSelectedProduct(p)} />
