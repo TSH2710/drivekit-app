@@ -1,10 +1,24 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   ShoppingCart, ChevronRight, Star, Heart, Share2, Minus, Plus,
-  ChevronLeft, Loader2, AlertCircle, Check, Eye,
+  ChevronLeft, Loader2, AlertCircle, Check, Eye, ChevronDown, Car,
 } from 'lucide-react'
 import { Product, ReviewStats, formatPrice, getCompareAtPrice, getDiscountPercent } from './types'
 import { ShareMenu } from './ProductCard'
+
+const VEHICLE_DATA: Record<string, Record<string, string[]>> = {
+  '2024': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'HR-V'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Bronco', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu', 'Camaro'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5', 'M4'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE', 'A-Class'], 'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe', 'Kona'], 'Kia': ['Sportage', 'Forte', 'Sorento', 'Telluride', 'Seltos'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Gladiator', 'Compass'] },
+  '2023': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'HR-V'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Bronco', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu', 'Camaro'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5', 'M4'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE', 'A-Class'], 'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe', 'Kona'], 'Kia': ['Sportage', 'Forte', 'Sorento', 'Telluride', 'Seltos'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Gladiator', 'Compass'] },
+  '2022': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'HR-V'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Bronco', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu', 'Camaro'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5', 'M4'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE', 'A-Class'], 'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe', 'Kona'], 'Kia': ['Sportage', 'Forte', 'Sorento', 'Telluride', 'Seltos'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Gladiator', 'Compass'] },
+  '2021': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'HR-V'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Bronco', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu', 'Camaro'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5', 'M4'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE', 'A-Class'], 'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe', 'Kona'], 'Kia': ['Sportage', 'Forte', 'Sorento', 'Telluride', 'Seltos'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Gladiator', 'Compass'] },
+  '2020': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'HR-V'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu', 'Camaro'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE'], 'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento', 'Telluride'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee', 'Gladiator'] },
+  '2019': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE'], 'Tesla': ['Model 3', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee'] },
+  '2018': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE'], 'Tesla': ['Model 3', 'Model S', 'Model X'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee'] },
+  '2017': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu'], 'BMW': ['3 Series', '5 Series', 'X3', 'X5'], 'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee'] },
+  '2016': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee'] },
+  '2015': { 'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Tacoma'], 'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'], 'Ford': ['F-150', 'Mustang', 'Explorer', 'Escape'], 'Chevrolet': ['Silverado', 'Equinox', 'Traverse', 'Malibu'], 'Hyundai': ['Tucson', 'Sonata', 'Elantra', 'Santa Fe'], 'Kia': ['Sportage', 'Forte', 'Sorento'], 'Jeep': ['Wrangler', 'Grand Cherokee', 'Cherokee'] },
+}
+const VEHICLE_YEARS = Object.keys(VEHICLE_DATA).sort((a, b) => Number(b) - Number(a))
 
 interface ProductDetailProps {
   product: Product
@@ -57,6 +71,10 @@ export default function ProductDetail({
   const [recentPurchase, setRecentPurchase] = useState<{ name: string; city: string } | null>(null)
   const [showPurchaseToast, setShowPurchaseToast] = useState(false)
   const [addedToCart, setAddedToCart] = useState<number | null>(null)
+  const [fitmentOpen, setFitmentOpen] = useState(false)
+  const [fitmentYear, setFitmentYear] = useState('')
+  const [fitmentMake, setFitmentMake] = useState('')
+  const [fitmentModel, setFitmentModel] = useState('')
 
   useEffect(() => {
     if (addedToCart === null) return
@@ -89,6 +107,10 @@ export default function ProductDetail({
     setShowReviewForm(false)
     setReviewSuccess(false)
     setReviewError('')
+    setFitmentYear('')
+    setFitmentMake('')
+    setFitmentModel('')
+    setFitmentOpen(false)
   }, [product.id])
 
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
@@ -181,6 +203,8 @@ export default function ProductDetail({
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="flex items-center gap-2 text-sm text-zinc-400 mb-8">
             <button onClick={onBack} className="hover:text-red-400 transition-colors">Home</button>
+            <ChevronRight size={14} />
+            <button onClick={() => { onBack(); setTimeout(() => {}, 0) }} className="hover:text-red-400 transition-colors">Products</button>
             <ChevronRight size={14} />
             <span className="text-zinc-200">{product.title.length > 60 ? product.title.slice(0, 60) + '…' : product.title}</span>
           </div>
@@ -325,6 +349,7 @@ export default function ProductDetail({
                     <Plus size={16} />
                   </button>
                 </div>
+                <span className="text-zinc-500 text-sm hidden sm:inline">Max 10 per order</span>
                 <button
                   onClick={() => { addToCart(product, qty, matchedVariant?.id, displayPrice); setAddedToCart(product.id) }}
                   disabled={!displayInStock}
@@ -333,14 +358,27 @@ export default function ProductDetail({
                   <ShoppingCart size={18} />
                   {addedToCart === product.id ? '✓ Added!' : `Add to Cart — $${(displayPrice * qty).toFixed(2)}`}
                 </button>
+                <button
+                  onClick={() => onToggleWishlist(product.id)}
+                  className={`w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors ${
+                    isWishlisted ? 'bg-red-600/10 border-red-600/50 text-red-500' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'
+                  }`}
+                >
+                  <Heart size={20} className={isWishlisted ? 'fill-red-500' : ''} />
+                </button>
               </div>
 
               {displayInStock && (
-                <div className="flex items-center gap-2 text-emerald-400 text-sm mb-6">
+                <div className="flex items-center gap-2 text-emerald-400 text-sm mb-2">
                   <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  In Stock — Ready to Ship
+                  In Stock — Ships within 24 hours
                 </div>
               )}
+
+              <div className="flex items-center gap-2 text-sm mb-6">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-zinc-300">{viewerDisplay} people viewing this right now</span>
+              </div>
 
               {/* Waitlist */}
               {!displayInStock && (
@@ -383,8 +421,8 @@ export default function ProductDetail({
               <div className="grid grid-cols-3 gap-3 mt-auto">
                 {[
                   { label: 'Free Shipping', sub: 'Over $99' },
-                  { label: '2-Week Returns', sub: 'Hassle-free' },
                   { label: 'Fitment Guarantee', sub: 'Or full refund' },
+                  { label: '2-Week Returns', sub: 'Hassle-free' },
                 ].map(({ label, sub }) => (
                   <div key={label} className="text-center p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
                     <p className="text-white text-xs font-bold">{label}</p>
@@ -393,6 +431,88 @@ export default function ProductDetail({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Will this fit my car? */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl mb-8 overflow-hidden">
+            <button
+              onClick={() => setFitmentOpen(!fitmentOpen)}
+              className="w-full flex items-center justify-between p-6 text-left"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-red-600/10 border border-red-600/30 rounded-xl flex items-center justify-center">
+                  <Car size={24} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-lg">Will this fit my car?</h3>
+                  <p className="text-zinc-500 text-sm">Check compatibility with your vehicle</p>
+                </div>
+              </div>
+              <ChevronDown size={20} className={`text-zinc-400 transition-transform duration-300 ${fitmentOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {fitmentOpen && (
+              <div className="px-6 pb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Year</label>
+                    <select
+                      value={fitmentYear}
+                      onChange={(e) => { setFitmentYear(e.target.value); setFitmentMake(''); setFitmentModel('') }}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none"
+                    >
+                      <option value="">Year</option>
+                      {VEHICLE_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Make</label>
+                    <select
+                      value={fitmentMake}
+                      onChange={(e) => { setFitmentMake(e.target.value); setFitmentModel('') }}
+                      disabled={!fitmentYear}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none disabled:opacity-40"
+                    >
+                      <option value="">Make</option>
+                      {fitmentYear && Object.keys(VEHICLE_DATA[fitmentYear] ?? {}).sort().map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Model</label>
+                    <select
+                      value={fitmentModel}
+                      onChange={(e) => setFitmentModel(e.target.value)}
+                      disabled={!fitmentMake}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none disabled:opacity-40"
+                    >
+                      <option value="">Model</option>
+                      {fitmentMake && (VEHICLE_DATA[fitmentYear]?.[fitmentMake] ?? []).map((md) => <option key={md} value={md}>{md}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {(fitmentYear || fitmentMake || fitmentModel) && (
+                  <button
+                    onClick={() => { setFitmentYear(''); setFitmentMake(''); setFitmentModel('') }}
+                    className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+                  >
+                    Reset selection
+                  </button>
+                )}
+                {fitmentYear && fitmentMake && fitmentModel && (
+                  <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Check size={16} className="text-emerald-400" />
+                      <span className="text-emerald-400 font-bold text-sm">This product fits your vehicle</span>
+                    </div>
+                    <p className="text-emerald-400/70 text-sm">This accessory is compatible with your {fitmentYear} {fitmentMake} {fitmentModel}. Covered by our Fitment Guarantee.</p>
+                  </div>
+                )}
+                {fitmentYear && fitmentMake && !fitmentModel && (
+                  <div className="mt-4 p-4 bg-zinc-800 border border-zinc-700 rounded-xl">
+                    <p className="text-zinc-400 text-sm">Select a model to check fitment.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Tabs */}
@@ -406,52 +526,128 @@ export default function ProductDetail({
                     activeTab === tab ? 'border-red-500 text-red-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  {tab === 'specs' ? 'Specifications' : tab === 'fitment' ? 'Fitment' : `Reviews (${reviewStats?.count ?? 0})`}
+                  {tab === 'specs' ? 'SPECS' : tab === 'fitment' ? 'FITMENT' : `REVIEWS (${reviewStats?.count ?? 0})`}
                 </button>
               ))}
             </div>
           </div>
 
           {activeTab === 'specs' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-                <h3 className="text-white font-bold mb-4">Product Details</h3>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Brand', value: product.vendor },
-                    { label: 'Type', value: product.productType || 'N/A' },
-                    { label: 'SKU', value: matchedVariant?.sku ?? 'N/A' },
-                    { label: 'Weight', value: matchedVariant?.weight ? `${matchedVariant.weight} ${matchedVariant.weightUnit}` : 'N/A' },
-                    { label: 'Variants', value: `${product.variants.length} option${product.variants.length !== 1 ? 's' : ''}` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className="text-zinc-500">{label}</span>
-                      <span className="text-zinc-200 font-medium">{value}</span>
-                    </div>
-                  ))}
+            <div className="mb-16">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Brand</p>
+                  <p className="text-white text-lg font-bold">{product.vendor}</p>
+                </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Product Type</p>
+                  <p className="text-white text-lg font-bold">{product.productType || 'Automotive Part'}</p>
+                </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Color</p>
+                  <p className="text-white text-lg font-bold">{matchedVariant?.option1 || matchedVariant?.option2 || 'N/A'}</p>
                 </div>
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-                <h3 className="text-white font-bold mb-4">Description</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed whitespace-pre-line">{product.description || 'No description available.'}</p>
-                {product.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Variants</p>
+                  <p className="text-white text-lg font-bold">{product.variants.length} variants</p>
+                  <p className="text-emerald-400 text-sm mt-1">{product.variants.filter(v => v.inStock).length} in stock</p>
+                </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">SKU</p>
+                  <p className="text-white text-lg font-bold">{matchedVariant?.sku || 'N/A'}</p>
+                </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Weight</p>
+                  <p className="text-white text-lg font-bold">{matchedVariant?.weight ? `${matchedVariant.weight} ${matchedVariant.weightUnit}` : 'N/A'}</p>
+                </div>
+              </div>
+              {product.tags.length > 0 && (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-3">Tags</p>
+                  <div className="flex flex-wrap gap-2">
                     {product.tags.map((tag) => (
                       <span key={tag} className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400 text-xs">{tag}</span>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'fitment' && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 mb-16 text-center">
-              <AlertCircle size={32} className="text-zinc-600 mx-auto mb-4" />
-              <h3 className="text-white font-bold text-lg mb-2">Universal Fitment</h3>
-              <p className="text-zinc-400 text-sm max-w-md mx-auto">
-                This product is designed to fit most vehicles. If it doesn't fit your specific car, we'll replace it or give you a full refund — no questions asked.
-              </p>
+            <div className="mb-16">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-red-600/10 border border-red-600/30 rounded-xl flex items-center justify-center">
+                    <Car size={24} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-lg">Vehicle Fitment</h3>
+                    <p className="text-zinc-500 text-sm">Check if this product fits your car</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Year</label>
+                    <select
+                      value={fitmentYear}
+                      onChange={(e) => { setFitmentYear(e.target.value); setFitmentMake(''); setFitmentModel('') }}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none"
+                    >
+                      <option value="">Select Year</option>
+                      {VEHICLE_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Make</label>
+                    <select
+                      value={fitmentMake}
+                      onChange={(e) => { setFitmentMake(e.target.value); setFitmentModel('') }}
+                      disabled={!fitmentYear}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none disabled:opacity-40"
+                    >
+                      <option value="">Select Make</option>
+                      {fitmentYear && Object.keys(VEHICLE_DATA[fitmentYear] ?? {}).sort().map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2 block">Model</label>
+                    <select
+                      value={fitmentModel}
+                      onChange={(e) => setFitmentModel(e.target.value)}
+                      disabled={!fitmentMake}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none disabled:opacity-40"
+                    >
+                      <option value="">Select Model</option>
+                      {fitmentMake && (VEHICLE_DATA[fitmentYear]?.[fitmentMake] ?? []).map((md) => <option key={md} value={md}>{md}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {(fitmentYear || fitmentMake || fitmentModel) && (
+                  <button
+                    onClick={() => { setFitmentYear(''); setFitmentMake(''); setFitmentModel('') }}
+                    className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors mb-4"
+                  >
+                    Reset selection
+                  </button>
+                )}
+                {fitmentYear && fitmentMake && fitmentModel && (
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Check size={16} className="text-emerald-400" />
+                      <span className="text-emerald-400 font-bold text-sm">This product fits your vehicle</span>
+                    </div>
+                    <p className="text-emerald-400/70 text-sm">This accessory is compatible with your {fitmentYear} {fitmentMake} {fitmentModel}. Covered by our Fitment Guarantee.</p>
+                  </div>
+                )}
+                <div className="mt-6 pt-6 border-t border-zinc-800">
+                  <p className="text-zinc-400 text-sm leading-relaxed">
+                    This product is designed to fit most vehicles. If it doesn't fit your specific car, we'll replace it or give you a full refund — no questions asked. All products come with our Fitment Guarantee.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
